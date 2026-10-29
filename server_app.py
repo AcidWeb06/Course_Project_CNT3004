@@ -4,7 +4,7 @@ import threading
 
 # Place this at the top of your file, near your PORT and IP variables
 AUTHORIZED_USERS = {
-    "client1": "encrypted_password_A", 
+    "user": "password", 
     "client2": "encrypted_password_B",
     "prof": "encrypted_password_C"
 }
@@ -17,24 +17,26 @@ FORMAT = "utf-8"
 SERVER_PATH = "server"
 
 ### to handle the clients
-def handle_client (conn,addr):
-
+def handle_client(conn, addr):
     print(f"[NEW CONNECTION] {addr} connected.")
-
-    initial_data = conn.recv(SIZE).decode(FORMAT)
-    data_parts = initial_data.split("@")
-
-    if len(data_parts) == 3 and data_parts[0] == "AUTH":
-      username = data_parts[1]
-      encrypted_pass = data_parts[2]
+    
+    # Prompt for username
+    conn.send("Enter username: ".encode(FORMAT))
+    username = conn.recv(SIZE).decode(FORMAT)
+    
+    # Prompt for password
+    conn.send("Enter password: ".encode(FORMAT))
+    encrypted_pass = conn.recv(SIZE).decode(FORMAT)
+    
+    # Verify credentials
+    if username in AUTHORIZED_USERS and AUTHORIZED_USERS[username] == encrypted_pass:
+        conn.send("Login successful.\n".encode(FORMAT))
     else:
-        conn.send("ERROR@Authentication required first".encode(FORMAT))
+        conn.send("ERROR: Invalid username or password.\n".encode(FORMAT))
         conn.close()
         return
 
-    if username in AUTHORIZED_USERS and AUTHORIZED_USERS[username] == encrypted_pass:
-      conn.send("OK@Welcome to the server".encode(FORMAT))
-      while True:
+    while True:
         data =  conn.recv(SIZE).decode(FORMAT)
         data = data.split("@")
         cmd = data[0]
@@ -48,9 +50,8 @@ def handle_client (conn,addr):
             send_data += "LOGOUT from the server.\n"
 
             conn.send(send_data.encode(FORMAT))
-      print(f"{addr} disconnected")
-      conn.close()
-  
+        print(f"{addr} disconnected")
+        conn.close()
     else:
       conn.send("ERROR@Invalid username or password".encode(FORMAT))
       conn.close()
