@@ -18,8 +18,8 @@ def main():
 
     #---------------Authentification---------------#
     # Recieving username prompt and sending username
-    User_msg = client.recv(SIZE).decode(FORMAT)
-    username = input(User_msg)
+    user_msg = client.recv(SIZE).decode(FORMAT)
+    username = input(user_msg)
     client.sendall(username.encode())
 
     # Recieving password prompt and sending username
