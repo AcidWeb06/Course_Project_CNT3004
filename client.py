@@ -1,5 +1,6 @@
 import os
 import socket
+import hashlib
 
 #School VPN IP (Ethernet): "10.200.102.149"
 
