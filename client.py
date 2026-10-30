@@ -22,11 +22,12 @@ def main():
     username = input(user_msg)
     client.sendall(username.encode())
 
-    # Recieving password prompt and sending username
+    # Recieving password prompt and sending hashed password
     pass_msg = client.recv(SIZE).decode(FORMAT)
     password = input(pass_msg)
-    client.sendall(password.encode())
-
+    hashed_password = hashlib.sha256(password.encode('utf-8')).hexdigest()
+    client.sendall(hashed_password.encode())
+    
     # Server response 
     login_response = client.recv(SIZE).decode()
     print(login_response.strip())
