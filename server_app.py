@@ -2,7 +2,6 @@ import os
 import socket
 import threading
 
-# Place this at the top of your file, near your PORT and IP variables
 AUTHORIZED_USERS = {
     "user": "password", 
     "client2": "encrypted_password_B",
@@ -16,7 +15,6 @@ SIZE = 1024
 FORMAT = "utf-8"
 SERVER_PATH = "server"
 
-### to handle the clients
 def handle_client(conn, addr):
     print(f"[NEW CONNECTION] {addr} connected.")
     
@@ -28,10 +26,9 @@ def handle_client(conn, addr):
     conn.send("Enter password: ".encode(FORMAT))
     encrypted_pass = conn.recv(SIZE).decode(FORMAT)
     
-    # Verify credentials
     if username in AUTHORIZED_USERS and AUTHORIZED_USERS[username] == encrypted_pass:
         conn.send("Login successful.\n".encode(FORMAT))
-    else:
+    else: # invalid username or password
         conn.send("ERROR: Invalid username or password.\n".encode(FORMAT))
         conn.close()
         return
@@ -52,20 +49,16 @@ def handle_client(conn, addr):
             conn.send(send_data.encode(FORMAT))
         print(f"{addr} disconnected")
         conn.close()
-    else:
-      conn.send("ERROR@Invalid username or password".encode(FORMAT))
-      conn.close()
-      return
 
 def main():
     print("Starting the server")
-    server = socket.socket(socket.AF_INET,socket.SOCK_STREAM) ## used IPV4 and TCP connection
-    server.bind(ADDR) # bind the address
-    server.listen() ## start listening
+    server = socket.socket(socket.AF_INET,socket.SOCK_STREAM) 
+    server.bind(ADDR) 
+    server.listen() 
     print(f"server is listening on {IP}: {PORT}")
     while True:
-        conn, addr = server.accept() ### accept a connection from a client
-        thread = threading.Thread(target = handle_client, args = (conn, addr)) ## assigning a thread for each client
+        conn, addr = server.accept()
+        thread = threading.Thread(target = handle_client, args = (conn, addr))
         thread.start()
 
 
