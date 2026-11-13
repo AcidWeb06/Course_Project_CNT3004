@@ -17,10 +17,20 @@ SIZE = 1024 ## byte .. buffer size
 FORMAT = "utf-8"
 SERVER_DATA_PATH = "server_data"
 
-### Remember to add/send response time by measuring time from cmd start to end
+#------------------------------------- NOTES -------------------------------------#
+"""
+# Look at function "main" to view the way to send network analysis data to server.
+  Under each command if/elif statement
+
+# Removed Command "TASK". It was unecessary. Update Server's list of commands
+
+# Changed Command "SEND_FILE" to "UPLOAD" for formatting reasons. Update Server's
+  list of commands. SEND_FILE still works!!! Just update the command list. 
+"""
+#---------------------------------------------------------------------------------#
 
 
-#----Sending File Function----#                    # Using "@" to split strings       
+#----Upload File Function----#                    # Using "@" to split strings       
 def send_file(client, filename):
     try:
         # Extracting file path
@@ -29,7 +39,7 @@ def send_file(client, filename):
         # Checking if file exist on client side
         if not file_path.exists():
             client.sendall("SEND_FILEFILE_NOT_FOUND_ON_CLIENT".encode(FORMAT)) # "Included "SEND_FILE" to make formating homogenous
-            return False
+            return None, None, None
 
         # Getting file size
         filesize = file_path.stat().st_size
@@ -51,7 +61,7 @@ def send_file(client, filename):
                 # Telling server to cancel upload
                 client.sendall("CANCEL_UPLOAD".encode(FORMAT))
                 print("Upload canceled by user.") 
-                return False
+                return None, None, None
 
             else:
                 # Telling server to overwrite
@@ -64,7 +74,7 @@ def send_file(client, filename):
         # Else
         else:
             print(f"[Error] Unexpected server response: {server_response}")
-            return False
+            return None, None, None
 
         # Continuing With Upload
 
@@ -107,10 +117,11 @@ def send_file(client, filename):
 
     except (socket.error, ConnectionResetError) as e:
         print(f"\n[Error] Connection lost during file upload: {e}")
-        return False
+        return None, None, None
+    
     except Exception as e:
         print(f"\n[Error] An unexpected error occurred while sending file: {e}")
-        return False
+        return None, None, None
     
 #--Downloading File Function--#
 def download_file(client, filename):
@@ -123,11 +134,11 @@ def download_file(client, filename):
         header = client.recv(SIZE).decode(FORMAT, errors="ignore").strip() 
         if not header:
             print("[Error] Server closed connection during download check.")
-            return False
+            return None, None, None
 
         # Handles "FILE_NOT_FOUND"
         if "FILE_NOT_FOUND" in header:
-            return False
+            return None, None, None
 
         # Handles "FILE_FOUND"
         if "FILE_FOUND" in header:
@@ -135,7 +146,7 @@ def download_file(client, filename):
             parts = header.split("@")
             if len(parts) < 4:
                 print(f"[Error] Malformed server header: {header}")
-                return False
+                return None, None, None
             
             s_filename = parts[1]
             filesize = int(parts[2])
@@ -191,14 +202,15 @@ def download_file(client, filename):
 
         else:
             print(f"[Error] Unexpected server response: {header}")
-            return False
+            return None, None, None
 
     except (socket.error, ConnectionResetError) as e:
         print(f"\n[Error] Connection lost during download: {e}")
-        return False
+        return None, None, None
+    
     except Exception as e:
         print(f"\n[Error] An unexpected error occurred during download: {e}")
-        return False
+        return None, None, None
         
 #----Deleting File Function----#
 def delete_file(client, filename):
@@ -303,19 +315,16 @@ def main():
             arg = parts[1] if len(parts) > 1 else ""
             
             # Checking what user inputted
-            if cmd == "TASK": # Removable. Unimportant
-                client.sendall(f"TASK@{arg}".encode(FORMAT))
-
-            elif cmd == "LOGOUT":
+            if cmd == "LOGOUT":
                 client.sendall(cmd.encode(FORMAT))
                 print("Logging out...")
                 break
 
-            elif cmd == "SEND_FILE": # Change to "Upload"
+            elif cmd == "UPLOAD":
                 # Make sure files are stored in the same dir/folder as client.py script 
                 # Input file name with extension (.mp3, .txt, .pdf, etc.)
-                start_time = time.time()
-                filename = arg if arg else input("Enter the full file name: ")           
+                filename = arg if arg else input("Enter full file name: ")   
+                start_time = time.time()        
                 transfer_time_s, filesize_mb, average_speed_mbps = send_file(client, filename)
                 end_time = time.time()
 
@@ -325,8 +334,8 @@ def main():
                 # client.sendall(f"NETWORK_ANALYSIS@{transfer_time_s}@{filesize_mb}@{average_speed_mbps}@{server_response_time_s}")
 
             elif cmd == "DOWNLOAD": 
-                start_time = time.time()
-                filename = arg if arg else input("Enter the full file name: ")     
+                filename = arg if arg else input("Enter full file name: ")  
+                start_time = time.time()   
                 transfer_time_s, filesize_mb, average_speed_mbps = download_file(client, filename)
                 end_time = time.time()
 
@@ -336,8 +345,8 @@ def main():
                 # client.sendall(f"NETWORK_ANALYSIS@{transfer_time_s}@{filesize_mb}@{average_speed_mbps}@{server_response_time_s}")
 
             elif cmd == "DELETE":
+                filename = arg if arg else input("Enter full file name: ")
                 start_time = time.time()
-                filename = arg if arg else input("Enter the full file name: ")
                 delete_file(client, filename)
                 end_time = time.time()
 
@@ -347,8 +356,8 @@ def main():
                 # client.sendall(f"NETWORK_ANALYSIS@{server_response_time_s}")                
 
             elif cmd == "DIR": # What is the main dir name?
+                dirname = arg if arg else input("Enter folder name: ")
                 start_time = time.time()
-                dirname = arg if arg else input("Enter the folder name: ")
                 view_dir(client, dirname)
                 end_time = time.time()
 
@@ -358,16 +367,16 @@ def main():
                 # client.sendall(f"NETWORK_ANALYSIS@{server_response_time_s}")
 
             elif cmd == "SUBFOLDER":
-                start_time = time.time()
                 if not arg:
-                    dirname = input("Enter the folder name: ")
-                    c_or_d = input(f"Create or Delete '{dirname}' (create/delete): ").strip().lower()
+                    dirname = input("Enter folder name: ")
+                    c_or_d = input(f"'{dirname}' (create/delete): ").strip().lower()
                 
                 else:
                     sub_parts = arg.split(" ", 1)
                     c_or_d = sub_parts[0].lower()
                     dirname = sub_parts[1] if len(sub_parts) > 1 else input("Enter folder name: ")
-                    
+
+                start_time = time.time()
                 subfolders(client, c_or_d, dirname)
                 end_time = time.time()
 
