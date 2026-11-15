@@ -1,7 +1,5 @@
-import os
 import socket
 import hashlib
-import math
 import time
 import getpass # Not Needed if using pwinput
 import pwinput # Can acheive input mask with pwinput library (pip install pwinput)
