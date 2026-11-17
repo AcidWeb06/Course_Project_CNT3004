@@ -5,8 +5,9 @@ import getpass # Not Needed if using pwinput
 import pwinput # Can acheive input mask with pwinput library (pip install pwinput)
 from pathlib import Path
 
-# School VPN IP (Ethernet): "10.200.102.149"
-# Land Hotspot: "10.35.76.204"
+#School VPN IP (Ethernet): "10.200.102.149"
+
+# Land: "10.35.76.204"
 
 # IP = "192.168.1.101" #"localhost"
 IP = "10.35.76.204"
@@ -110,7 +111,7 @@ def send_file(client, filename):
 
         print(f"\nSize: {round(filesize_mb)} MB")
         print(f"Transfer Time: {transfer_time:.2f} Seconds")
-        print(f"Average Speed: {average_speed:.2f} Mbps")
+        print(f"Average Speed: {average_speed:.2f} MBps")
 
         # Recieving Server Message
         status = server_msg(client)
@@ -204,7 +205,7 @@ def download_file(client, filename):
 
             print(f"\nSize: {round(filesize_mb)} MB")
             print(f"Transfer Time: {transfer_time:.2f} Seconds")
-            print(f"Average Speed: {average_speed:.2f} Mbps")
+            print(f"Average Speed: {average_speed:.2f} MBps")
 
 
             # Recieving Server Message
