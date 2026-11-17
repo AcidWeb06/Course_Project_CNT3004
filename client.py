@@ -17,18 +17,12 @@ SERVER_DATA_PATH = "server_data"
 
 #------------------------------------- NOTES -------------------------------------#
 """
-# Look at function "main" to view the way to send network analysis data to server.
-  Under each command if/elif statement
-
-# Removed Command "TASK". It was unecessary. Update Server's list of commands
-
-# Changed Command "SEND_FILE" to "UPLOAD" for formatting reasons. Update Server's
-  list of commands. SEND_FILE still works!!! Just update the command list. 
+# CLIENT sends full network analysis report to the server with accurate status
 """
 #---------------------------------------------------------------------------------#
 
 
-#----Upload File Function----#                    # Using "@" to split strings       
+#-----Upload File Function-----#                    # Using "@" to split strings       
 def send_file(client, filename):
     try:
         # Extracting file path
@@ -37,7 +31,10 @@ def send_file(client, filename):
         # Checking if file exist on client side
         if not file_path.exists():
             client.sendall("SEND_FILEFILE_NOT_FOUND_ON_CLIENT".encode(FORMAT)) # "Included "SEND_FILE" to make formating homogenous
-            return None, None, None
+
+            # Recieving server message
+            server_msg(client)
+            return False, 0, 0
 
         # Getting file size
         filesize = file_path.stat().st_size
@@ -58,8 +55,10 @@ def send_file(client, filename):
             if choice != 'y':
                 # Telling server to cancel upload
                 client.sendall("CANCEL_UPLOAD".encode(FORMAT))
-                print("Upload canceled by user.") 
-                return None, None, None
+
+                # Recieving Server Message
+                server_msg(client)
+                return False, 0, 0
 
             else:
                 # Telling server to overwrite
@@ -72,7 +71,10 @@ def send_file(client, filename):
         # Else
         else:
             print(f"[Error] Unexpected server response: {server_response}")
-            return None, None, None
+
+            # Recieving Server Message
+            server_msg(client)
+            return False, 0, 0
 
         # Continuing With Upload
 
@@ -109,17 +111,20 @@ def send_file(client, filename):
         print(f"Transfer Time: {transfer_time:.2f} Seconds")
         print(f"Average Speed: {average_speed:.2f} Mbps")
 
+        # Recieving Server Message
+        status = server_msg(client)
 
         # Finished Uploading and returning values
-        return transfer_time, filesize_mb, average_speed
+        return status, transfer_time, filesize
 
     except (socket.error, ConnectionResetError) as e:
-        print(f"\n[Error] Connection lost during file upload: {e}")
-        return None, None, None
+        print(f"\n[Error] Connection lost during file upload: {e}")      
+        return None, 0, 0
     
     except Exception as e:
         print(f"\n[Error] An unexpected error occurred while sending file: {e}")
-        return None, None, None
+        return None, 0, 0
+    
     
 #--Downloading File Function--#
 def download_file(client, filename):
@@ -132,11 +137,15 @@ def download_file(client, filename):
         header = client.recv(SIZE).decode(FORMAT, errors="ignore").strip() 
         if not header:
             print("[Error] Server closed connection during download check.")
-            return None, None, None
+            # Recieving Server Message
+            server_msg(client)
+            return False, 0, 0
 
         # Handles "FILE_NOT_FOUND"
         if "FILE_NOT_FOUND" in header:
-            return None, None, None
+            # Recieving Server Message
+            server_msg(client)
+            return False, 0, 0
 
         # Handles "FILE_FOUND"
         if "FILE_FOUND" in header:
@@ -144,13 +153,15 @@ def download_file(client, filename):
             parts = header.split("@")
             if len(parts) < 4:
                 print(f"[Error] Malformed server header: {header}")
-                return None, None, None
+                # Recieving Server Message
+                server_msg(client)
+                return False, 0, 0
             
             s_filename = parts[1]
             filesize = int(parts[2])
             offset = int(parts[3])
 
-            print(f"Downloading '{s_filename}' (Size: {filesize} bytes)...")
+            print(f"Downloading '{s_filename}'")
 
             # Temporarily set a short timeout on the socket for the final chunk cleanup
             # so it never permanently hangs if a few bytes mismatch.
@@ -195,20 +206,25 @@ def download_file(client, filename):
             print(f"Average Speed: {average_speed:.2f} Mbps")
 
 
+            # Recieving Server Message
+            status = server_msg(client)
+            
             # Finished Downloading and returning values
-            return transfer_time, filesize_mb, average_speed
+            return status, transfer_time, filesize
 
         else:
             print(f"[Error] Unexpected server response: {header}")
-            return None, None, None
+            # Recieving Server Message
+            server_msg(client)
+            return False, 0, 0
 
     except (socket.error, ConnectionResetError) as e:
         print(f"\n[Error] Connection lost during download: {e}")
-        return None, None, None
+        return None, 0, 0
     
     except Exception as e:
         print(f"\n[Error] An unexpected error occurred during download: {e}")
-        return None, None, None
+        return None, 0, 0
         
 #----Deleting File Function----#
 def delete_file(client, filename):
@@ -217,8 +233,13 @@ def delete_file(client, filename):
         exist_cmd = f"DELETE@{filename}"
         client.sendall(exist_cmd.encode(FORMAT))
 
+        # Recieving Server Message
+        status = server_msg(client)
+        return status
+
     except socket.error as e:
         print(f"[Error] Network communication failed: {e}")
+        return None
 
 #------Viewing Directory------#
 def view_dir(client, folder):
@@ -227,8 +248,13 @@ def view_dir(client, folder):
         check_cmd = f"DIR@{folder}"
         client.sendall(check_cmd.encode(FORMAT))
 
+        # Recieving Server Message
+        status = server_msg(client)
+        return status
+
     except socket.error as e:
         print(f"[Error] Network communication failed: {e}")
+        return None
 
 #---Create|Delete Subfolders---#
 def subfolders(client, cmd ,folder):
@@ -237,8 +263,80 @@ def subfolders(client, cmd ,folder):
         info = f"SUBFOLDER@{cmd.lower()}@{folder}"
         client.sendall(info.encode(FORMAT))
 
+        # Recieving Server Message
+        status = server_msg(client)
+        return status
+
     except socket.error as e:
         print(f"[Error] Network communication failed: {e}")
+        return None
+
+#-Network Analysis Information-#
+def send_network_analysis(client, cmd, target, nbytes, duration_s, status):
+    try:
+        # Changing status to string 
+        if status == True:
+            status_str = "ok"
+        else:
+            status_str = "error"
+
+        # Sending neccesary info to server
+        msg = f"NETWORK_ANALYSIS@{cmd}@{target}@{nbytes}@{duration_s}@{status_str}"
+        client.sendall(msg.encode(FORMAT))
+
+        return
+
+    except socket.error as e:
+        print(f"[Error] Network communication failed: {e}")
+        return None
+
+#---Unpacking Server Message---#
+def server_msg(client):
+    try:
+        # Server message 
+        s_data = client.recv(SIZE).decode(FORMAT, errors="ignore")
+
+        # If no message is recieved
+        if not s_data:
+            print("[Error] Server closed the connection.")
+            return None
+
+        # Spliting data
+        if "@" in s_data:
+            s_cmd, msg = s_data.split("@", 1)
+        else:
+            s_cmd, msg = "OK", s_data
+
+        # Checking server's message 
+        if s_cmd == "OK":
+            print(f"\n{msg.strip()}")
+
+            # Checking for error message
+            if "error" in msg.lower():
+                return False
+            
+            return True
+
+        elif s_cmd == "DISCONNECTED": # Used to prompt disconnection of client from server
+            print(f"{msg.strip()}")
+            return None
+
+        else:
+            print(f"\n{s_data.strip()}")
+
+            # Checking for error message
+            if "error" in s_data.lower():
+                return False
+            
+            return True
+
+    except socket.timeout as e:
+        print(f"[Error] Server response timed out: {e}")
+        return None
+    
+    except socket.error as e:
+        print(f"[Error] Network communication failed: {e}")
+        return None
 
 def main():
 
@@ -272,38 +370,21 @@ def main():
         login_response = client.recv(SIZE).decode(FORMAT, errors="ignore")
         print(login_response.strip())
 
-        # If authentification failed, server sends error msg and disconnects
-        if "ERROR" in login_response:
+        #----------Welcome/Disconnect Message----------#
+
+        # Server's message
+        success = server_msg(client)
+
+        # Logging out of server | Authentification failed or message was never sent
+        if success != True:
             return
 
         #----------------Command Center----------------#
         
         while True:  ### multiple communications
 
-            # Server's  last message after functionS
-            s_data = client.recv(SIZE).decode(FORMAT, errors="ignore")
-
-            if not s_data:
-                print("[Error] Server closed the connection.")
-                break
-
-            if "@" in s_data:
-                s_cmd, msg = s_data.split("@", 1)
-            else:
-                s_cmd, msg = "OK", s_data
-
-            # Checking server's message 
-            if s_cmd == "OK": # "OK" used to prompt welcome message and valid commands
-                print(f"\n{msg.strip()}")
-
-            elif s_cmd == "DISCONNECTED": # Used to prompt disconnection of client from server
-                print(f"\n[Disconnected] {msg.strip()}")
-                break
-
-            else:
-                print(f"\n{s_data.strip()}")
-
             # Inputing command in terminal
+            print("")
             data = input("> ").strip()
             if not data:
                 continue
@@ -321,48 +402,54 @@ def main():
             elif cmd == "UPLOAD":
                 # Make sure files are stored in the same dir/folder as client.py script 
                 # Input file name with extension (.mp3, .txt, .pdf, etc.)
-                filename = arg if arg else input("Enter full file name: ")   
-                start_time = time.time()        
-                transfer_time_s, filesize_mb, average_speed_mbps = send_file(client, filename)
-                end_time = time.time()
+                filename = arg if arg else input("Enter full file name: ")    
+                status, transfer_time_s, filesize_b = send_file(client, filename)
 
-                server_response_time_s = end_time - start_time
+                # If status is fatally broken
+                if status == None:
+                    break
 
-                # Example message to send data for network analysis
-                # client.sendall(f"NETWORK_ANALYSIS@{transfer_time_s}@{filesize_mb}@{average_speed_mbps}@{server_response_time_s}")
+                # Network analysis
+                send_network_analysis(client, cmd, filename, filesize_b, transfer_time_s, status)
 
             elif cmd == "DOWNLOAD": 
                 filename = arg if arg else input("Enter full file name: ")  
-                start_time = time.time()   
-                transfer_time_s, filesize_mb, average_speed_mbps = download_file(client, filename)
-                end_time = time.time()
+                status, transfer_time_s, filesize_b = download_file(client, filename)
 
-                server_response_time_s = end_time - start_time
-
-                # Example message to send data for network analysis
-                # client.sendall(f"NETWORK_ANALYSIS@{transfer_time_s}@{filesize_mb}@{average_speed_mbps}@{server_response_time_s}")
+                # If status is fatally broken
+                if status == None:
+                    break
+                
+                # Network analysis
+                send_network_analysis(client, cmd, filename, filesize_b, transfer_time_s, status)
 
             elif cmd == "DELETE":
                 filename = arg if arg else input("Enter full file name: ")
                 start_time = time.time()
-                delete_file(client, filename)
+                status = delete_file(client, filename)
                 end_time = time.time()
 
-                server_response_time_s = end_time - start_time
+                # If status is fatally broken
+                if status == None:
+                    break
 
-                # Example message to send data for network analysis
-                # client.sendall(f"NETWORK_ANALYSIS@{server_response_time_s}")                
+                # Network analysis
+                response_time_s = end_time - start_time
+                send_network_analysis(client, cmd, filename, 0, response_time_s, status)                
 
             elif cmd == "DIR": # What is the main dir name?
                 dirname = arg if arg else input("Enter folder name: ")
                 start_time = time.time()
-                view_dir(client, dirname)
+                status = view_dir(client, dirname)
                 end_time = time.time()
 
-                server_response_time_s = end_time - start_time
+                # If status is fatally broken
+                if status == None:
+                    break        
 
-                # Example message to send data for network analysis
-                # client.sendall(f"NETWORK_ANALYSIS@{server_response_time_s}")
+                # Network analysis
+                response_time_s = end_time - start_time
+                send_network_analysis(client, cmd, dirname, 0, response_time_s, status)
 
             elif cmd == "SUBFOLDER":
                 if not arg:
@@ -375,16 +462,24 @@ def main():
                     dirname = sub_parts[1] if len(sub_parts) > 1 else input("Enter folder name: ")
 
                 start_time = time.time()
-                subfolders(client, c_or_d, dirname)
+                status = subfolders(client, c_or_d, dirname)
                 end_time = time.time()
 
-                server_response_time_s = end_time - start_time
+                # If status is fatally broken
+                if status == None:
+                    break
 
-                # Example message to send data for network analysis
-                # client.sendall(f"NETWORK_ANALYSIS@{server_response_time_s}") 
+                # Network analysis
+                response_time_s = end_time - start_time
+                send_network_analysis(client, cmd, ((c_or_d).lower() + " " + dirname), 0, response_time_s, status)
 
             else:
-                client.sendall(f"cmd".encode(FORMAT))
+                client.sendall(f"{cmd}".encode(FORMAT))
+                status = server_msg(client)
+
+                # If status is fatally broken
+                if status == None:
+                    break
                 
 
     except socket.timeout:
