@@ -1,11 +1,11 @@
 import os
-import csv
 import json
 import socket
 import threading
 import hashlib
 import hmac
 import time
+from NetworkAnalysis import networkStats
 
 # username -> sha256 of the password
 AUTHORIZED_USERS = {
@@ -26,9 +26,8 @@ CHECK_TIMEOUT = 2     # seconds
 CHUNK = 64 * 1024
 COMMANDS = "UPLOAD, DOWNLOAD, DELETE, DIR, SUBFOLDER, LOGOUT"  # UPLOAD arrives as SEND_FILE
 
-STATS_FILE = "server_stats.csv"
-STATS_FIELDS = ["timestamp", "user", "operation", "filename", "bytes", "seconds", "mb_per_s", "status"]
-STATS = []  # read by the analysis module
+STATS_FILE = "network_stats.csv"
+stats = None
 
 # files sit on disk under: type letter + S for server + a number (TS001.txt, VS002.mp4)
 # clients keep using the original name
@@ -52,32 +51,27 @@ def log(msg):
         print(msg.encode("ascii", "backslashreplace").decode())  # windows console chokes on some filenames
 
 # transfers pass bytes
-def record_stat(user, operation, filename="", nbytes=0, seconds=0.0, status="ok"):
-    mb_per_s = 0
-    if nbytes and seconds:
-        mb_per_s = round(nbytes / (1024 * 1024) / seconds, 3)
-    row = {
-        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
-        "user": user,
-        "operation": operation,
-        "filename": filename,
-        "bytes": nbytes,
-        "seconds": round(seconds, 6),
-        "mb_per_s": mb_per_s,
-        "status": status,
-    }
-    with lock:
-        STATS.append(row)
-        try:
-            new = not os.path.exists(STATS_FILE)
-            with open(STATS_FILE, "a", newline="") as f:
-                writer = csv.DictWriter(f, STATS_FIELDS)
-                if new:
-                    writer.writeheader()
-                writer.writerow(row)
-        except OSError:
-            pass
-    return row
+def record_stat(user, operation, filename="", nbytes=0, seconds=0.0, status="ok", response_ms=0.0, role="server"):
+    try:
+        stats.log(f"{role}:{user}", operation, filename, nbytes, seconds, response_ms, status)
+    except (OSError, AttributeError):
+        pass
+    return round(nbytes / (1024 * 1024) / seconds, 3) if nbytes and seconds else 0
+
+
+def record_client_report(user, report):
+    fields = report.split("@", 6)
+    if len(fields) < 7:
+        record_stat(user, "REPORT", report.strip(), status="malformed", role="client")
+        return ""
+    _, cmd, target, nbytes, seconds, response_ms, rest = fields
+    status = next((s for s in ("error", "ok") if rest.startswith(s)), "")
+    try:
+        nbytes, seconds, response_ms = int(float(nbytes)), float(seconds), float(response_ms)
+    except ValueError:
+        nbytes, seconds, response_ms, status = 0, 0.0, 0.0, ""
+    record_stat(user, cmd, target, nbytes, seconds, status or "malformed", response_ms, role="client")
+    return rest[len(status):]
 
 # every command ends this
 def reply(conn, text):
@@ -218,6 +212,7 @@ def load_index():
 
 # existence check -> overwrite decision -> 1024 byte header -> the data -> OK@
 def handle_upload(conn, user, check):
+    received = time.perf_counter()
     if not check:
         conn.settimeout(CHECK_TIMEOUT)
         try:
@@ -226,12 +221,14 @@ def handle_upload(conn, user, check):
             check = ""
         conn.settimeout(CLIENT_TIMEOUT)
     if not check.startswith("CHECK_EXISTENCE_OF@"):
+        record_stat(user, "UPLOAD", status="not found on client", response_ms=(time.perf_counter() - received) * 1000)
         return reply(conn, "Upload aborted: file not found on client.")
 
     sent_name = check.split("@", 1)[1]
     filename = os.path.basename(sent_name.strip().replace("\\", "/"))  # client may send a whole windows path
     path, key, entry = (None, None, None) if filename in ("", ".", "..") else locate(filename)
 
+    response_ms = (time.perf_counter() - received) * 1000
     if path and os.path.exists(path):
         conn.sendall(b"FILE_EXISTS")
         # exact length so we don't eat the header behind it
@@ -241,6 +238,7 @@ def handle_upload(conn, user, check):
         else:
             decision = first + recv_exact(conn, len("CANCEL_UPLOAD") - 1)
         if decision != b"PROCEED_OVERWRITE":
+            record_stat(user, "UPLOAD", filename, status="canceled", response_ms=response_ms)
             return reply(conn, "Upload canceled.")
     else:
         conn.sendall(b"FILE_NOT_EXISTS")
@@ -283,7 +281,7 @@ def handle_upload(conn, user, check):
         if f:
             f.close()
         if remaining:
-            record_stat(user, "UPLOAD", filename, filesize - remaining, time.perf_counter() - start, "interrupted")
+            record_stat(user, "UPLOAD", filename, filesize - remaining, time.perf_counter() - start, "interrupted", response_ms)
             if f:
                 os.remove(tmp)
             if path:
@@ -299,18 +297,20 @@ def handle_upload(conn, user, check):
             os.remove(tmp)
         if path:
             forget_if_missing(key, path)
+        record_stat(user, "UPLOAD", filename, filesize, seconds, "error", response_ms)
         return reply(conn, f"ERROR: Could not save '{filename}'.")
     with lock:
         entry["sha256"] = digest.hexdigest()
         save_index()
-    row = record_stat(user, "UPLOAD", filename, filesize, seconds)
-    log(f"[UPLOAD] {user} {filename} -> {entry['stored']} ({filesize} bytes, {row['mb_per_s']} MB/s)")
+    mb_per_s = record_stat(user, "UPLOAD", filename, filesize, seconds, response_ms=response_ms)
+    log(f"[UPLOAD] {user} {filename} -> {entry['stored']} ({filesize} bytes, {mb_per_s} MB/s)")
     reply(conn, f"Server received '{filename}' as {entry['id']} ({filesize} bytes).")
 
 
 # DOWNLOAD@path[@offset] -> header, data, OK@.
 # header is FILE_FOUND@name@size@offset@sha256
 def handle_download(conn, user, arg):
+    received = time.perf_counter()
     name, offset = arg, 0
     if name.rsplit("@", 1)[-1].isdigit() and "@" in name:
         name, offset = name.rsplit("@", 1)
@@ -318,6 +318,7 @@ def handle_download(conn, user, arg):
     path, _, entry = locate(name)
     if not path or not os.path.isfile(path):
         conn.sendall(f"FILE_NOT_FOUND@{name}".encode(FORMAT).ljust(SIZE))
+        record_stat(user, "DOWNLOAD", name, status="error", response_ms=(time.perf_counter() - received) * 1000)
         return reply(conn, f"ERROR: File '{name}' does not exist on the server.")
 
     shown = entry["name"] if entry else os.path.basename(path)
@@ -326,6 +327,7 @@ def handle_download(conn, user, arg):
     offset = min(offset, filesize)
     conn.sendall(f"FILE_FOUND@{shown}@{filesize}@{offset}@{digest}".encode(FORMAT).ljust(SIZE))
     start = time.perf_counter()
+    response_ms = (start - received) * 1000
     set_active(path, 1)
     try:
         with open(path, "rb") as f:
@@ -334,8 +336,8 @@ def handle_download(conn, user, arg):
                 conn.sendall(chunk)
     finally:
         set_active(path, -1)
-    row = record_stat(user, "DOWNLOAD", name, filesize - offset, time.perf_counter() - start)
-    log(f"[DOWNLOAD] {user} {name} <- {os.path.basename(path)} ({filesize - offset} bytes, {row['mb_per_s']} MB/s)")
+    mb_per_s = record_stat(user, "DOWNLOAD", name, filesize - offset, time.perf_counter() - start, response_ms=response_ms)
+    log(f"[DOWNLOAD] {user} {name} <- {os.path.basename(path)} ({filesize - offset} bytes, {mb_per_s} MB/s)")
     reply(conn, f"Download of '{name}' complete.")
 
 # returns (ok, text)
@@ -413,7 +415,7 @@ def authenticate(conn, addr):
 def handle_command(conn, user, raw):
     raw, sep, report = raw.partition("NETWORK_ANALYSIS@")
     if sep:
-        record_stat(user, "CLIENT_REPORT", report.strip())
+        raw += record_client_report(user, report)
     raw = raw.strip()
     if not raw:
         return True
@@ -436,7 +438,7 @@ def handle_command(conn, user, raw):
         else:
             ok, text = False, f"ERROR: Unknown command. Valid commands: {COMMANDS}"
         reply(conn, text)
-        record_stat(user, cmd, arg, seconds=time.perf_counter() - start, status="ok" if ok else "error")
+        record_stat(user, cmd, arg, status="ok" if ok else "error", response_ms=(time.perf_counter() - start) * 1000)
     return True
 
 
@@ -491,7 +493,9 @@ def handle_client(conn, addr):
 
 
 def main():
+    global stats
     print("Starting the server")
+    stats = networkStats(STATS_FILE)
     os.makedirs(SERVER_PATH, exist_ok=True)
     load_index()
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
