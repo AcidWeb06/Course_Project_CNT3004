@@ -5,10 +5,11 @@ import getpass # Not Needed if using pwinput
 import pwinput # Can acheive input mask with pwinput library (pip install pwinput)
 from pathlib import Path
 
-#School VPN IP (Ethernet): "10.200.102.149"
+# School VPN IP (Ethernet): "10.200.102.149"
+# Land Hotspot: "10.35.76.204"
 
 # IP = "192.168.1.101" #"localhost"
-IP = "localhost"
+IP = "10.35.76.204"
 PORT = 4450
 ADDR = (IP,PORT)
 SIZE = 1024 ## byte .. buffer size
@@ -272,7 +273,7 @@ def subfolders(client, cmd ,folder):
         return None
 
 #-Network Analysis Information-#
-def send_network_analysis(client, cmd, target, nbytes, duration_s, status):
+def send_network_analysis(client, cmd, target, nbytes, transfer_time_s, response_time_ms, status):
     try:
         # Changing status to string 
         if status == True:
@@ -281,7 +282,7 @@ def send_network_analysis(client, cmd, target, nbytes, duration_s, status):
             status_str = "error"
 
         # Sending neccesary info to server
-        msg = f"NETWORK_ANALYSIS@{cmd}@{target}@{nbytes}@{duration_s}@{status_str}"
+        msg = f"NETWORK_ANALYSIS@{"CLIENT"}@{cmd}@{target}@{nbytes}@{transfer_time_s}@{response_time_ms}@{status_str}"
         client.sendall(msg.encode(FORMAT))
 
         return
@@ -403,25 +404,33 @@ def main():
                 # Make sure files are stored in the same dir/folder as client.py script 
                 # Input file name with extension (.mp3, .txt, .pdf, etc.)
                 filename = arg if arg else input("Enter full file name: ")    
+                start_time = time.time()
                 status, transfer_time_s, filesize_b = send_file(client, filename)
-
+                end_time = time.time()
                 # If status is fatally broken
                 if status == None:
                     break
 
                 # Network analysis
-                send_network_analysis(client, cmd, filename, filesize_b, transfer_time_s, status)
+                response_time_s = end_time - start_time
+                response_time_ms = response_time_s * 1000
+                send_network_analysis(client, cmd, filename, filesize_b, transfer_time_s, response_time_ms, status)
 
             elif cmd == "DOWNLOAD": 
                 filename = arg if arg else input("Enter full file name: ")  
+                start_time = time.time()
                 status, transfer_time_s, filesize_b = download_file(client, filename)
+                end_time = time.time()
 
                 # If status is fatally broken
                 if status == None:
                     break
                 
+
                 # Network analysis
-                send_network_analysis(client, cmd, filename, filesize_b, transfer_time_s, status)
+                response_time_s = end_time - start_time
+                response_time_ms = response_time_s * 1000
+                send_network_analysis(client, cmd, filename, filesize_b, transfer_time_s, response_time_ms, status)
 
             elif cmd == "DELETE":
                 filename = arg if arg else input("Enter full file name: ")
@@ -435,9 +444,10 @@ def main():
 
                 # Network analysis
                 response_time_s = end_time - start_time
-                send_network_analysis(client, cmd, filename, 0, response_time_s, status)                
+                response_time_ms = response_time_s * 1000
+                send_network_analysis(client, cmd, filename, 0, 0, response_time_ms, status)                
 
-            elif cmd == "DIR": # What is the main dir name?
+            elif cmd == "DIR":
                 dirname = arg if arg else input("Enter folder name: ")
                 start_time = time.time()
                 status = view_dir(client, dirname)
@@ -447,9 +457,11 @@ def main():
                 if status == None:
                     break        
 
+
                 # Network analysis
                 response_time_s = end_time - start_time
-                send_network_analysis(client, cmd, dirname, 0, response_time_s, status)
+                response_time_ms = response_time_s * 1000
+                send_network_analysis(client, cmd, dirname, 0, 0, response_time_ms, status)
 
             elif cmd == "SUBFOLDER":
                 if not arg:
@@ -471,7 +483,8 @@ def main():
 
                 # Network analysis
                 response_time_s = end_time - start_time
-                send_network_analysis(client, cmd, ((c_or_d).lower() + " " + dirname), 0, response_time_s, status)
+                response_time_ms = response_time_s * 1000
+                send_network_analysis(client, cmd, ((c_or_d).lower() + " " + dirname), 0, 0, response_time_ms, status)
 
             else:
                 client.sendall(f"{cmd}".encode(FORMAT))
