@@ -336,8 +336,7 @@ def handle_download(conn, user, arg):
         set_active(path, -1)
     row = record_stat(user, "DOWNLOAD", name, filesize - offset, time.perf_counter() - start)
     log(f"[DOWNLOAD] {user} {name} <- {os.path.basename(path)} ({filesize - offset} bytes, {row['mb_per_s']} MB/s)")
-    reply(conn, f"Download of '{name}' complete." + (f" SHA-256: {digest}" if digest else ""))
-
+    reply(conn, f"Download of '{name}' complete.")
 
 # returns (ok, text)
 def handle_delete(arg):
