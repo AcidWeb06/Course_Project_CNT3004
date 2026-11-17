@@ -414,7 +414,18 @@ def authenticate(conn, addr):
 def handle_command(conn, user, raw):
     raw, sep, report = raw.partition("NETWORK_ANALYSIS@")
     if sep:
-        record_stat(user, "CLIENT_REPORT", report.strip())
+        try:
+            r_cmd, name, nbytes_str, seconds_str, status = report.strip().rsplit("@", 4)
+
+            # For SUBFOLDER
+            if " " in name:
+                name = name.replace(" ", "@")
+
+            record_stat(user, ("CLIENT_" + r_cmd + "_REPORT"), name, int(nbytes_str), float(seconds_str), status)
+            
+        except ValueError:
+            log(f"[WARN] Malformed network analysis report from {user}: {report!r}")
+            
     raw = raw.strip()
     if not raw:
         return True
