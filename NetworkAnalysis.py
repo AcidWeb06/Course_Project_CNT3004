@@ -14,7 +14,7 @@ class networkStats:
         if not os.path.exists(self.filename):
             with open(self.filename, 'w', newline='') as file:
                 writer = csv.writer(file)
-                writer.writerow(["timestamp", "role", "action", "filename", "file_size_bytes", "transfer_time_seconds", "data_rate_bps", "system_reponse_time_milliseconds", "status"])
+                writer.writerow(["timestamp", "role", "action", "filename", "file_size_bytes", "transfer_time_seconds", "data_rate_MB/s", "system_reponse_time_milliseconds", "status"])
     
     def log(self, role, action, filename="", file_size_bytes=0, transfer_time_seconds=0, system_reponse_time_milliseconds=0, status="OK"):
         data_rate = 0.0
