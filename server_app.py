@@ -325,13 +325,13 @@ def handle_download(conn, user, arg):
     digest = entry["sha256"] if entry else ""
     filesize = os.path.getsize(path)
     offset = min(offset, filesize)
-    conn.sendall(f"FILE_FOUND@{shown}@{filesize}@{offset}@{digest}".encode(FORMAT).ljust(SIZE))
+    conn.sendall(f"FILE_FOUND@{shown}@{filesize}@{offset}@{digest}".encode(FORMAT).ljust(SIZE)) # header
     start = time.perf_counter()
     response_ms = (start - received) * 1000
     set_active(path, 1)
     try:
-        with open(path, "rb") as f:
-            f.seek(offset)
+        with open(path, "rb") as f: 
+            f.seek(offset) # canceled bonus code
             while chunk := f.read(CHUNK):
                 conn.sendall(chunk)
     finally:
@@ -498,8 +498,8 @@ def main():
     stats = networkStats(STATS_FILE)
     os.makedirs(SERVER_PATH, exist_ok=True)
     load_index()
-    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)  # lets it restart right away on the same port
+    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM) # AF_INET = IPv4, SOCK_STREAM = TCP
+    server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)  # lets server restart on the same port without waiting
 
     try:
         server.bind(ADDR)
@@ -513,7 +513,7 @@ def main():
     try:
         while True:
             conn, addr = server.accept()
-            # so ctrl+c doesn't wait on clients that are still connected
+            # daemon so ctrl+c shuts down the threads aswell
             threading.Thread(target=handle_client, args=(conn, addr), daemon=True).start()
     except KeyboardInterrupt:
         log("\nShutting down server.")
