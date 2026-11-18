@@ -283,7 +283,7 @@ def send_network_analysis(client, cmd, target, nbytes, transfer_time_s, response
             status_str = "error"
 
         # Sending neccesary info to server
-        msg = f"NETWORK_ANALYSIS@{"CLIENT"}@{cmd}@{target}@{nbytes}@{transfer_time_s}@{response_time_ms}@{status_str}"
+        msg = f"NETWORK_ANALYSIS@CLIENT@{cmd}@{target}@{nbytes}@{transfer_time_s}@{response_time_ms}@{status_str}"
         client.sendall(msg.encode(FORMAT))
 
         return
