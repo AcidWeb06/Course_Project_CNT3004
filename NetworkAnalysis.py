@@ -53,7 +53,7 @@ def recv_json(sock):
         return None
     msg_length = struct.unpack("!I", raw_length)[0] #Unpacks the prefix in order to retrieve the exact length of the TCP message
     payload = recv_exact(sock, msg_length) #Calls the recv_exact() function to retrieve the exact byte length of the JSON string
-    if not payload:
+    if not payload: #The function returns None if the socket connection was disconnected before the 4-byte header was read by the function
         return None
     return json.loads(payload.decode('utf-8')) #Decodes the payload and parses it into a Python dictionary using json.loads()
 
@@ -63,5 +63,5 @@ def recv_exact(sock, num_bytes):
         chunk = sock.recv(num_bytes - len(buf)) #Calculates the difference the number of bytes in the header and the length of 'buf'
         if not chunk: #Checks if the TCP chunk is an empty byte string
             return None
-        buf.extend(chunk)
+        buf.extend(chunk) #Adds chunk to the end of the bytearray() buf
     return bytes(buf) #Converts the bytearray() object buf into an immutable sequence of bytes
