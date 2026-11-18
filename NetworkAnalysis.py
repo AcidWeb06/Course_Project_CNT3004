@@ -17,7 +17,7 @@ class networkStats:
                 writer = csv.writer(file) 
                 writer.writerow(["timestamp", "source", "action", "filename", "file_size_bytes", "transfer_time_seconds", "data_rate_MB/s", "system_reponse_time_milliseconds", "status"])
     
-    def log(self, role, action, filename="", file_size_bytes=0, transfer_time_seconds=0, system_reponse_time_milliseconds=0, status="OK"):
+    def log(self, source, action, filename="", file_size_bytes=0, transfer_time_seconds=0, system_reponse_time_milliseconds=0, status="OK"):
         data_rate = 0.0 #Intializes the data rate to 0.0
         if transfer_time_seconds > 0 and file_size_bytes > 0: #Checks if the transfer time of the file and the size of the file is greater than 0
             data_rate = (file_size_bytes / (1024 * 1024)) / transfer_time_seconds #Calculates the data rate of the file in megabytes per second (MB/s)
