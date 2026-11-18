@@ -22,7 +22,8 @@ class networkStats:
         if transfer_time_seconds > 0 and file_size_bytes > 0: #Checks if the transfer time of the file and the size of the file is greater than 0
             data_rate = (file_size_bytes / (1024 * 1024)) / transfer_time_seconds #Calculates the data rate of the file in megabytes per second (MB/s)
             
-        #Stores the values of each of the network statistics for the current file into a dictionary called 'row'. 'transfer_time_seconds', 'data_rate', and 'system_reponse_time_milliseconds' are rounded to 4 decimal places
+        #Stores the values of each of the network statistics for the current file into a dictionary called 'row'. 
+        #'transfer_time_seconds', 'data_rate', and 'system_reponse_time_milliseconds' are rounded to 4 decimal places
         row = [
                time.strftime("%Y-%m-%d %H:%M:%S"),
                source,
